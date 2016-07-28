@@ -220,13 +220,6 @@ If `types` is specified, returns an array of methods whose types match.
 methods
 
 """
-    workers()
-
-Returns a list of all worker process identifiers.
-"""
-workers
-
-"""
     isinteger(x) -> Bool
 
 Test whether `x` or all its elements are numerically equal to some integer
@@ -389,45 +382,6 @@ Return a tuple `(I, J, V)` where `I` and `J` are the row and column indexes of t
 values in matrix `A`, and `V` is a vector of the non-zero values.
 """
 findnz
-
-"""
-    Future()
-
-Create a `Future` on the local machine.
-"""
-Future()
-
-"""
-    Future(n)
-
-Create a `Future` on process `n`.
-"""
-Future(::Integer)
-
-"""
-    RemoteChannel()
-
-Make an reference to a `Channel{Any}(1)` on the local machine.
-"""
-RemoteChannel()
-
-"""
-    RemoteChannel(n)
-
-Make an reference to a `Channel{Any}(1)` on process `n`.
-"""
-RemoteChannel(::Integer)
-
-"""
-    RemoteChannel(f::Function, pid)
-
-Create references to remote channels of a specific size and type. `f()` is a function that
-when executed on `pid` must return an implementation of an `AbstractChannel`.
-
-For example, `RemoteChannel(()->Channel{Int}(10), pid)`, will return a reference to a
-channel of type `Int` and size 10 on `pid`.
-"""
-RemoteChannel(f::Function, pid)
 
 """
     foldl(op, v0, itr)
@@ -726,14 +680,6 @@ assert
 Compute the hyperbolic secant of `x`
 """
 sech
-
-"""
-    nworkers()
-
-Get the number of available worker processes. This is one less than `nprocs()`. Equal to
-`nprocs()` if `nprocs() == 1`.
-"""
-nworkers
 
 """
     filemode(file)
@@ -1702,16 +1648,6 @@ sum!
 Close an I/O stream. Performs a `flush` first.
 """
 close(stream::IO)
-
-"""
-    close(Channel)
-
-Closes a channel. An exception is thrown by:
-
-* `put!` on a closed channel.
-* `take!` and `fetch` on an empty, closed channel.
-"""
-close(::Channel)
 
 """
     cospi(x)
@@ -3912,20 +3848,6 @@ descriptive error string.
 DimensionMismatch
 
 """
-    take!(RemoteChannel)
-
-Fetch a value from a remote channel, also removing it in the processs.
-"""
-take!(::RemoteChannel)
-
-"""
-    take!(Channel)
-
-Removes and returns a value from a `Channel`. Blocks till data is available.
-"""
-take!(::Channel)
-
-"""
     sort!(v, [alg=<algorithm>,] [by=<transform>,] [lt=<comparison>,] [rev=false])
 
 Sort the vector `v` in place. `QuickSort` is used by default for numeric arrays while
@@ -5868,30 +5790,6 @@ Return the minimum of the arguments. Operates elementwise over arrays.
 min
 
 """
-    isready(r::RemoteChannel)
-
-Determine whether a `RemoteChannel` has a value stored to it. Note that this function can
-cause race conditions, since by the time you receive its result it may no longer be true.
-However, it can be safely used on a `Future` since they are assigned only once.
-"""
-isready
-
-"""
-    isready(r::Future)
-
-Determine whether a `Future` has a value stored to it.
-
-If the argument `Future` is owned by a different node, this call will block to wait for the
-answer. It is recommended to wait for `r` in a separate task instead, or to use a local
-`Channel` as a proxy:
-
-    c = Channel(1)
-    @async put!(c, remotecall_fetch(long_computation, p))
-    isready(c)  # will not block
-"""
-    isready(r::Future)
-
-"""
     InexactError()
 
 Type conversion cannot be done exactly.
@@ -6959,30 +6857,6 @@ An iterator that cycles through `iter` forever.
 cycle
 
 """
-    put!(RemoteChannel, value)
-
-Store a value to the remote channel. If the channel is full, blocks until space is available.
-Returns its first argument.
-"""
-put!(::RemoteChannel, value)
-
-"""
-    put!(Future, value)
-
-Store a value to a future. Future's are write-once remote references. A `put!` on an already
-set `Future` throws an Exception. All asynchronous remote calls return `Future`s and set the
-value to the return value of the call upon completion.
-"""
-put!(::Future, value)
-
-"""
-    put!(Channel, value)
-
-Appends an item to the channel. Blocks if the channel is full.
-"""
-put!(::Channel, value)
-
-"""
     operm(file)
 
 Like uperm but gets the permissions for people who neither own the file nor are a member of
@@ -6998,13 +6872,6 @@ to use a preallocated output array, both for performance and to control the prec
 output (e.g. to avoid overflow).
 """
 cumsum
-
-"""
-    rmprocs(pids...)
-
-Removes the specified workers.
-"""
-rmprocs
 
 """
     rpad(string, n, p)
@@ -7100,13 +6967,6 @@ Base.:(*)(s::AbstractString, t::AbstractString)
 Get the system time in seconds since the epoch, with fairly high (typically, microsecond) resolution.
 """
 time()
-
-"""
-    procs()
-
-Returns a list of all process identifiers.
-"""
-procs
 
 """
     procs(S::SharedArray)
@@ -7761,13 +7621,6 @@ retrieved by accessing `m.match` and the captured sequences can be retrieved by 
 `m.captures` The optional `idx` argument specifies an index at which to start the search.
 """
 match
-
-"""
-    nprocs()
-
-Get the number of available processes.
-"""
-nprocs
 
 """
     Ac_mul_B(A, B)
@@ -9581,32 +9434,6 @@ Base.:$(x, y)
 Get the IP address and the port that the given TCP socket is connected to (or bound to, in the case of TCPServer).
 """
 getsockname
-
-"""
-    Base.remoteref_id(r::AbstractRemoteRef) -> (whence, id)
-
-A low-level API which returns the unique identifying tuple for a remote reference. A
-reference id is a tuple of two elements - pid where the reference was created from and a
-one-up number from that node.
-"""
-Base.remoteref_id
-
-"""
-    Base.channel_from_id(refid) -> c
-
-A low-level API which returns the backing AbstractChannel for an id returned by
-`remoteref_id`. The call is valid only on the node where the backing channel exists.
-"""
-Base.channel_from_id
-
-"""
-    Base.worker_id_from_socket(s::IO) -> pid
-
-A low-level API which given a `IO` connection, returns the pid of the worker it is connected
-to. This is useful when writing custom `serialize` methods for a type, which optimizes the
-data written out depending on the receiving process id.
-"""
-Base.worker_id_from_socket
 
 """
     Base.cluster_cookie([cookie]) -> cookie

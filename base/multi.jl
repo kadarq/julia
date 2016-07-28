@@ -426,13 +426,37 @@ end
 
 myid() = LPROC.id
 
+"""
+    nprocs()
+
+Get the number of available processes.
+"""
 nprocs() = length(PGRP.workers)
+
+"""
+    nworkers()
+
+Get the number of available worker processes. This is one less than `nprocs()`. Equal to
+`nprocs()` if `nprocs() == 1`.
+"""
 function nworkers()
     n = nprocs()
     n == 1 ? 1 : n-1
 end
 
+"""
+    procs()
+
+Returns a list of all process identifiers.
+"""
 procs() = Int[x.id for x in PGRP.workers]
+
+"""
+    procs(pid::Integer)
+
+Returns a list of all process identifiers visible to worker `pid`.
+The result depends on the topology of the workgroup.
+"""
 function procs(pid::Integer)
     if myid() == 1
         if (pid == 1) || (isa(map_pid_wrkr[pid].manager, LocalManager))
@@ -446,6 +470,11 @@ function procs(pid::Integer)
     end
 end
 
+"""
+    workers()
+
+Returns a list of all worker process identifiers.
+"""
 function workers()
     allp = procs()
     if nprocs() == 1
@@ -455,7 +484,17 @@ function workers()
     end
 end
 
-function rmprocs(args...; waitfor = 0.0)
+"""
+    rmprocs(pids...; waitfor=0.0)
+
+Removes the specified workers. Note that only
+process 1 can add or remove workers - if another
+worker tries to call `rmprocs`, an error will be
+thrown. The optional argument `waitfor` determines
+how long the first process will wait for the workers
+to shut down.
+"""
+function rmprocs(pids...; waitfor = 0.0)
     # Only pid 1 can add and remove processes
     if myid() != 1
         error("only process 1 can add and remove processes")
@@ -464,7 +503,7 @@ function rmprocs(args...; waitfor = 0.0)
     lock(worker_lock)
     try
         rmprocset = []
-        for i in vcat(args...)
+        for i in vcat(pids...)
             if i == 1
                 warn("rmprocs: process 1 not removed")
             else
@@ -512,6 +551,14 @@ function worker_from_id(pg::ProcessGroup, i)
     w
 end
 
+"""
+    Base.worker_id_from_socket(s) -> pid
+
+A low-level API which given a `IO` connection or a `Worker`,
+returns the pid of the worker it is connected to.
+This is useful when writing custom `serialize` methods for a type,
+which optimizes the data written out depending on the receiving process id.
+"""
 function worker_id_from_socket(s)
     w = get(map_sock_wrkr, s, nothing)
     if isa(w,Worker)
@@ -650,12 +697,47 @@ function finalize_ref(r::AbstractRemoteRef)
     return r
 end
 
+"""
+    Future(w::LocalProcess)
+
+Create a `Future` on the local machine.
+"""
 Future(w::LocalProcess) = Future(w.id)
+
+"""
+    Future(w::Worker)
+
+Create a `Future` on the (possibly remote) worker `w`.
+"""
 Future(w::Worker) = Future(w.id)
+
+"""
+    Future(pid::Integer=myid())
+
+Create a `Future` on process `pid`.
+The default `pid` is the current process.
+"""
 Future(pid::Integer=myid()) = Future(pid, RRID())
 
+"""
+    RemoteChannel(pid::Integer=myid())
+
+Make a reference to a `Channel{Any}(1)` on process `pid`.
+The default `pid` is the current process.
+"""
 RemoteChannel(pid::Integer=myid()) = RemoteChannel{Channel{Any}}(pid, RRID())
 
+"""
+    RemoteChannel(f::Function, pid::Integer=myid())
+
+Create references to remote channels of a specific size and type. `f()` is a function that
+when executed on `pid` must return an implementation of an `AbstractChannel`.
+
+For example, `RemoteChannel(()->Channel{Int}(10), pid)`, will return a reference to a
+channel of type `Int` and size 10 on `pid`.
+
+The default `pid` is the current process.
+"""
 function RemoteChannel(f::Function, pid::Integer=myid())
     remotecall_fetch(pid, f, RRID()) do f, rrid
         rv=lookup_ref(rrid, f)
@@ -666,7 +748,21 @@ end
 hash(r::AbstractRemoteRef, h::UInt) = hash(r.whence, hash(r.id, h))
 ==(r::AbstractRemoteRef, s::AbstractRemoteRef) = (r.whence==s.whence && r.id==s.id)
 
+"""
+    Base.remoteref_id(r::AbstractRemoteRef) -> (whence, id)
+
+A low-level API which returns the unique identifying tuple for a remote reference. A
+reference id is a tuple of two elements - `pid` where the reference was created from and a
+one-up number from that node.
+"""
 remoteref_id(r::AbstractRemoteRef) = RRID(r.whence, r.id)
+
+"""
+    Base.channel_from_id(id) -> c
+
+A low-level API which returns the backing `AbstractChannel` for an `id` returned by
+`remoteref_id`. The call is valid only on the node where the backing channel exists.
+"""
 function channel_from_id(id)
     rv = get(PGRP.refs, id, false)
     if rv === false
@@ -686,6 +782,20 @@ function lookup_ref(pg, rrid, f)
     end
     rv
 end
+
+"""
+    isready(rr::Future)
+
+Determine whether a `Future` has a value stored to it.
+
+If the argument `Future` is owned by a different node, this call will block to wait for the answer.
+It is recommended to wait for `rr` in a separate task instead
+or to use a local `Channel` as a proxy:
+
+    c = Channel(1)
+    @async put!(c, remotecall_fetch(long_computation, p))
+    isready(c)  # will not block
+"""
 function isready(rr::Future)
     !isnull(rr.v) && return true
 
@@ -697,6 +807,14 @@ function isready(rr::Future)
     end
 end
 
+"""
+    isready(rr::RemoteChannel, args...)
+
+Determine whether a `RemoteChannel` has a value stored to it.
+Note that this function can cause race conditions, since by the
+time you receive its result it may no longer be true. However,
+it can be safely used on a `Future` since they are assigned only once.
+"""
 function isready(rr::RemoteChannel, args...)
     rid = remoteref_id(rr)
     if rr.where == myid()
@@ -832,6 +950,14 @@ type RemoteException <: Exception
     captured::CapturedException
 end
 
+"""
+    RemoteException(captured)
+
+Contains the `CapturedException` `captured`, which was
+generated on a worker and can be passed back to the first
+process as a result of `pmap` or other calls to workers
+(e.g. `remotecall_fetch`).
+"""
 RemoteException(captured) = RemoteException(myid(), captured)
 function showerror(io::IO, re::RemoteException)
     (re.pid != myid()) && print(io, "On worker ", re.pid, ":\n")
@@ -983,6 +1109,15 @@ fetch(r::RemoteChannel, args...) = call_on_owner(fetch_ref, r, args...)
 fetch(x::ANY) = x
 
 isready(rv::RemoteValue, args...) = isready(rv.c, args...)
+
+"""
+    put!(rr::Future, v)
+
+Store a value to a `Future` `rr`. `Future`s are write-once remote references.
+A `put!` on an already set `Future` throws an `Exception`.
+All asynchronous remote calls return `Future`s and set the
+value to the return value of the call upon completion.
+"""
 function put!(rr::Future, v)
     !isnull(rr.v) && error("Future can be set only once")
     call_on_owner(put_future, rr, v, myid())
@@ -1001,6 +1136,14 @@ end
 
 put!(rv::RemoteValue, args...) = put!(rv.c, args...)
 put_ref(rid, args...) = (put!(lookup_ref(rid), args...); nothing)
+
+"""
+    put!(rr::RemoteChannel, args...)
+
+Store a set of values to the `RemoteChannel`.
+If the channel is full, blocks until space is available.
+Returns its first argument.
+"""
 put!(rr::RemoteChannel, args...) = (call_on_owner(put_ref, rr, args...); rr)
 
 # take! is not supported on Future
@@ -1011,6 +1154,12 @@ function take_ref(rid, callee, args...)
     isa(v, RemoteException) && (myid() == callee) && throw(v)
     v
 end
+
+"""
+    take!(rr::RemoteChannel, args...)
+
+Fetch value(s) from a remote channel, removing the value(s) in the processs.
+"""
 take!(rr::RemoteChannel, args...) = call_on_owner(take_ref, rr, myid(), args...)
 
 # close is not supported on Future

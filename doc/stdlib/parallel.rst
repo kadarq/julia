@@ -227,11 +227,11 @@ General Parallel Computing Support
 
    Returns a list of all worker process identifiers.
 
-.. function:: rmprocs(pids...)
+.. function:: rmprocs(pids...; waitfor=0.0)
 
    .. Docstring generated from Julia source
 
-   Removes the specified workers.
+   Removes the specified workers. Note that only process 1 can add or remove workers - if another worker tries to call ``rmprocs``\ , an error will be thrown. The optional argument ``waitfor`` determines how long the first process will wait for the workers to shut down.
 
 .. function:: interrupt([pids...])
 
@@ -285,37 +285,33 @@ General Parallel Computing Support
 
    Call a function asynchronously on the given arguments on the specified process. Returns a ``Future``\ . Keyword arguments, if any, are passed through to ``func``\ .
 
-.. function:: Future()
+.. function:: RemoteException(captured)
 
    .. Docstring generated from Julia source
 
-   Create a ``Future`` on the local machine.
+   Contains the ``CapturedException`` ``captured``\ , which was generated on a worker and can be passed back to the first process as a result of ``pmap`` or other calls to workers (e.g. ``remotecall_fetch``\ ).
 
-.. function:: Future(n)
-
-   .. Docstring generated from Julia source
-
-   Create a ``Future`` on process ``n``\ .
-
-.. function:: RemoteChannel()
+.. function:: Future(pid::Integer=myid())
 
    .. Docstring generated from Julia source
 
-   Make an reference to a ``Channel{Any}(1)`` on the local machine.
+   Create a ``Future`` on process ``pid``\ . The default ``pid`` is the current process.
 
-.. function:: RemoteChannel(n)
+.. function:: RemoteChannel(pid::Integer=myid())
 
    .. Docstring generated from Julia source
 
-   Make an reference to a ``Channel{Any}(1)`` on process ``n``\ .
+   Make a reference to a ``Channel{Any}(1)`` on process ``pid``\ . The default ``pid`` is the current process.
 
-.. function:: RemoteChannel(f::Function, pid)
+.. function:: RemoteChannel(f::Function, pid::Integer=myid())
 
    .. Docstring generated from Julia source
 
    Create references to remote channels of a specific size and type. ``f()`` is a function that when executed on ``pid`` must return an implementation of an ``AbstractChannel``\ .
 
    For example, ``RemoteChannel(()->Channel{Int}(10), pid)``\ , will return a reference to a channel of type ``Int`` and size 10 on ``pid``\ .
+
+   The default ``pid`` is the current process.
 
 .. function:: wait([x])
 
@@ -357,49 +353,49 @@ General Parallel Computing Support
 
    Perform ``fetch(remotecall(...))`` in one message.  Keyword arguments, if any, are passed through to ``func``\ . Any remote exceptions are captured in a ``RemoteException`` and thrown.
 
-.. function:: put!(RemoteChannel, value)
+.. function:: put!(rr::RemoteChannel, args...)
 
    .. Docstring generated from Julia source
 
-   Store a value to the remote channel. If the channel is full, blocks until space is available. Returns its first argument.
+   Store a set of values to the ``RemoteChannel``\ . If the channel is full, blocks until space is available. Returns its first argument.
 
-.. function:: put!(Future, value)
-
-   .. Docstring generated from Julia source
-
-   Store a value to a future. Future's are write-once remote references. A ``put!`` on an already set ``Future`` throws an Exception. All asynchronous remote calls return ``Future``\ s and set the value to the return value of the call upon completion.
-
-.. function:: put!(Channel, value)
+.. function:: put!(rr::Future, v)
 
    .. Docstring generated from Julia source
 
-   Appends an item to the channel. Blocks if the channel is full.
+   Store a value to a ``Future`` ``rr``\ . ``Future``\ s are write-once remote references. A ``put!`` on an already set ``Future`` throws an ``Exception``\ . All asynchronous remote calls return ``Future``\ s and set the value to the return value of the call upon completion.
 
-.. function:: take!(RemoteChannel)
+.. function:: put!(c::Channel, v)
 
    .. Docstring generated from Julia source
 
-   Fetch a value from a remote channel, also removing it in the processs.
+   Appends an item ``v`` to the channel ``c``\ . Blocks if the channel is full.
 
-.. function:: take!(Channel)
+.. function:: take!(rr::RemoteChannel, args...)
+
+   .. Docstring generated from Julia source
+
+   Fetch value(s) from a remote channel, removing the value(s) in the processs.
+
+.. function:: take!(c::Channel)
 
    .. Docstring generated from Julia source
 
    Removes and returns a value from a ``Channel``\ . Blocks till data is available.
 
-.. function:: isready(r::RemoteChannel)
+.. function:: isready(rr::RemoteChannel, args...)
 
    .. Docstring generated from Julia source
 
    Determine whether a ``RemoteChannel`` has a value stored to it. Note that this function can cause race conditions, since by the time you receive its result it may no longer be true. However, it can be safely used on a ``Future`` since they are assigned only once.
 
-.. function:: isready(r::Future)
+.. function:: isready(rr::Future)
 
    .. Docstring generated from Julia source
 
    Determine whether a ``Future`` has a value stored to it.
 
-   If the argument ``Future`` is owned by a different node, this call will block to wait for the answer. It is recommended to wait for ``r`` in a separate task instead, or to use a local ``Channel`` as a proxy:
+   If the argument ``Future`` is owned by a different node, this call will block to wait for the answer. It is recommended to wait for ``rr`` in a separate task instead or to use a local ``Channel`` as a proxy:
 
    .. code-block:: julia
 
@@ -407,7 +403,7 @@ General Parallel Computing Support
        @async put!(c, remotecall_fetch(long_computation, p))
        isready(c)  # will not block
 
-.. function:: close(Channel)
+.. function:: close(c::Channel)
 
    .. Docstring generated from Julia source
 
@@ -567,19 +563,19 @@ General Parallel Computing Support
 
    .. Docstring generated from Julia source
 
-   A low-level API which returns the unique identifying tuple for a remote reference. A reference id is a tuple of two elements - pid where the reference was created from and a one-up number from that node.
+   A low-level API which returns the unique identifying tuple for a remote reference. A reference id is a tuple of two elements - ``pid`` where the reference was created from and a one-up number from that node.
 
-.. function:: Base.channel_from_id(refid) -> c
-
-   .. Docstring generated from Julia source
-
-   A low-level API which returns the backing AbstractChannel for an id returned by ``remoteref_id``\ . The call is valid only on the node where the backing channel exists.
-
-.. function:: Base.worker_id_from_socket(s::IO) -> pid
+.. function:: Base.channel_from_id(id) -> c
 
    .. Docstring generated from Julia source
 
-   A low-level API which given a ``IO`` connection, returns the pid of the worker it is connected to. This is useful when writing custom ``serialize`` methods for a type, which optimizes the data written out depending on the receiving process id.
+   A low-level API which returns the backing ``AbstractChannel`` for an ``id`` returned by ``remoteref_id``\ . The call is valid only on the node where the backing channel exists.
+
+.. function:: Base.worker_id_from_socket(s) -> pid
+
+   .. Docstring generated from Julia source
+
+   A low-level API which given a ``IO`` connection or a ``Worker``\ , returns the pid of the worker it is connected to. This is useful when writing custom ``serialize`` methods for a type, which optimizes the data written out depending on the receiving process id.
 
 .. function:: Base.cluster_cookie([cookie]) -> cookie
 
