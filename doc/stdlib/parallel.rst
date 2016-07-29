@@ -233,7 +233,13 @@ General Parallel Computing Support
 
    Removes the specified workers. Note that only process 1 can add or remove workers - if another worker tries to call ``rmprocs``\ , an error will be thrown. The optional argument ``waitfor`` determines how long the first process will wait for the workers to shut down.
 
-.. function:: interrupt([pids...])
+.. function:: interrupt(pids::AbstractVector=workers())
+
+   .. Docstring generated from Julia source
+
+   Interrupt the current executing task on the specified workers. This is equivalent to pressing Ctrl-C on the local machine. If no arguments are given, all workers are interrupted.
+
+.. function:: interrupt(pids::Integer...)
 
    .. Docstring generated from Julia source
 
@@ -279,11 +285,23 @@ General Parallel Computing Support
    * ``pmap(f, c; retry_n=1)`` and ``asyncmap(retry(remote(f)),c)``
    * ``pmap(f, c; retry_n=1, on_error=e->e)`` and ``asyncmap(x->try retry(remote(f))(x) catch e; e end, c)``
 
-.. function:: remotecall(func, id, args...; kwargs...)
+.. function:: remotecall(f, w::LocalProcess, args...; kwargs...) -> Future
 
    .. Docstring generated from Julia source
 
-   Call a function asynchronously on the given arguments on the specified process. Returns a ``Future``\ . Keyword arguments, if any, are passed through to ``func``\ .
+   Call a function ``f`` asynchronously on the given arguments on the specified ``LocalProcess``\ . Returns a ``Future``\ . Keyword arguments, if any, are passed through to ``f``\ .
+
+.. function:: remotecall(f, w::Worker, args...; kwargs...) -> Future
+
+   .. Docstring generated from Julia source
+
+   Call a function ``f`` asynchronously on the given arguments on the specified ``Worker``\ . Returns a ``Future``\ . Keyword arguments, if any, are passed through to ``f``\ .
+
+.. function:: remotecall(f, id::Integer, args...; kwargs...) -> Future
+
+   .. Docstring generated from Julia source
+
+   Call a function ``f`` asynchronously on the given arguments on the specified process. Returns a ``Future``\ . Keyword arguments, if any, are passed through to ``f``\ .
 
 .. function:: RemoteException(captured)
 
@@ -341,17 +359,41 @@ General Parallel Computing Support
    * ``RemoteChannel``\ : Wait for and get the value of a remote reference. Exceptions raised are same as for a ``Future`` .
    * ``Channel`` : Wait for and get the first available item from the channel.
 
-.. function:: remotecall_wait(func, id, args...; kwargs...)
+.. function:: remotecall_wait(f, w::LocalProcess, args...; kwargs...)
 
    .. Docstring generated from Julia source
 
-   Perform ``wait(remotecall(...))`` in one message. Keyword arguments, if any, are passed through to ``func``\ .
+   Perform ``wait(remotecall(...))`` in one message on ``LocalProcess`` ``w``\ . Keyword arguments, if any, are passed through to ``f``\ .
 
-.. function:: remotecall_fetch(func, id, args...; kwargs...)
+.. function:: remotecall_wait(f, w::Worker, args...; kwargs...)
 
    .. Docstring generated from Julia source
 
-   Perform ``fetch(remotecall(...))`` in one message.  Keyword arguments, if any, are passed through to ``func``\ . Any remote exceptions are captured in a ``RemoteException`` and thrown.
+   Perform a faster ``wait(remotecall(...))`` in one message on ``Worker`` ``w``\ . Keyword arguments, if any, are passed through to ``f``\ .
+
+.. function:: remotecall_wait(f, id::Integer, args...; kwargs...)
+
+   .. Docstring generated from Julia source
+
+   Perform a faster ``wait(remotecall(...))`` in one message on the ``Worker`` specified by worker id ``id``\ . Keyword arguments, if any, are passed through to ``f``\ .
+
+.. function:: remotecall_fetch(f, w::LocalProcess, args...; kwargs...)
+
+   .. Docstring generated from Julia source
+
+   Perform a faster ``fetch(remotecall(...))`` in one message. Keyword arguments, if any, are passed through to ``f``\ . Any remote exceptions are captured in a ``RemoteException`` and thrown.
+
+.. function:: remotecall_fetch(f, w::Worker, args...; kwargs...)
+
+   .. Docstring generated from Julia source
+
+   Perform a faster ``fetch(remotecall(...))`` in one message. Keyword arguments, if any, are passed through to ``f``\ . Any remote exceptions are captured in a ``RemoteException`` and thrown.
+
+.. function:: remotecall_fetch(f, id::Integer, args...; kwargs...)
+
+   .. Docstring generated from Julia source
+
+   Perform ``fetch(remotecall(...))`` in one message. Keyword arguments, if any, are passed through to ``f``\ . Any remote exceptions are captured in a ``RemoteException`` and thrown.
 
 .. function:: put!(rr::RemoteChannel, args...)
 
@@ -577,11 +619,17 @@ General Parallel Computing Support
 
    A low-level API which given a ``IO`` connection or a ``Worker``\ , returns the pid of the worker it is connected to. This is useful when writing custom ``serialize`` methods for a type, which optimizes the data written out depending on the receiving process id.
 
-.. function:: Base.cluster_cookie([cookie]) -> cookie
+.. function:: Base.cluster_cookie() -> cookie
 
    .. Docstring generated from Julia source
 
-   Returns the cluster cookie. If a cookie is passed, also sets it as the cluster cookie.
+   Returns the cluster cookie, by default the ``LocalProcess`` cookie.
+
+.. function:: Base.cluster_cookie(cookie) -> cookie
+
+   .. Docstring generated from Julia source
+
+   Sets the passed cookie as the cluster cookie, then returns it.
 
 Shared Arrays
 -------------
